@@ -1,0 +1,331 @@
+---
+title: "Unsupersived Learning - K Means Clustering and PCA"
+author: "Eliud Mule"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set working Directory
+```{r}
+# setwd("C:/Users/user/Desktop/Professional DS Mule/R")
+```
+
+
+## **Task 1 : Data Import and Exploration**
+### **Load required libraries**
+```{r}
+library(tidyverse)      # Data Manipulation
+library(cluster)          # Clustering Algorithms
+library(factoextra)       # Clustering Visualization
+library(palmerpenguins)      # Sample Dataset
+library(dplyr)            # Data Manipulation
+library(ggplot2)          # Data Visualization
+
+```
+
+
+### **Load Penguin Dataset**
+```{r}
+data("penguins", package = "palmerpenguins")
+head(penguins)
+```
+
+### **Explore the dataset**
+```{r}
+library(psych)
+str(penguins)
+describe(penguins)
+```
+
+### **Check for missing values**
+```{r}
+# Count missing values per column
+missing_count <- colSums(is.na(penguins))
+missing_count
+
+```
+
+```{r}
+# percentage of missing values
+sum(is.na(penguins)) / (nrow(penguins) * ncol(penguins)) * 100
+```
+
+### **remove rows with missing values**
+```{r}
+penguins_clean <- na.omit(penguins)
+dim(penguins_clean)
+```
+
+## **Task 2 :Data Preprocessing**
+```{r}
+# Select only numeric columns for clustering
+numeric_vars <- c("bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g")
+penguins_numeric <- dplyr::select(penguins_clean,all_of(numeric_vars))
+
+```
+
+
+```{r}
+# Scale variables for clustering
+penguins_scaled <- as.data.frame(scale(penguins_numeric))
+```
+
+```{r}
+# Verify Scaling
+colMeans(penguins_scaled)  # Should be close to 0
+apply(penguins_scaled, 2, sd)  # Should be close to 1
+```
+
+
+## **Task 3 : Exploratory Data Analysis**
+```{r}
+# Pairs plot colored by species
+pairs(penguins_numeric, col = penguins_clean$species, pch = 19,cex = 0.7, main = "Penguin Morphology : Pairs Plot")
+
+
+```
+
+
+
+
+```{r}
+# Boxplots for each numeric variable by species
+penguins_clean %>%
+  pivot_longer(cols = all_of(numeric_vars), names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = species, y = value, fill = species)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "Boxplots of Numeric Variables by Species") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+
+```{r}
+# Correlation matrix and heatmap
+cor_matrix <- cor(penguins_numeric)
+cor_matrix
+
+```
+
+
+
+```{r}
+
+corrplot::corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45, title = "Correlation Matrix Heatmap")
+
+```
+
+
+## **Task 4 : K-Means Clustering**
+```{r}
+set.seed(2026)  # For reproducibility
+# Determine optimal number of clusters using Elbow Method
+fviz_nbclust(penguins_scaled, kmeans, method = "wss") +
+  labs(title = "Elbow Method for Optimal Clusters")
+
+```
+
+```{r}
+# Determine optimal number of clusters using Silhouette Method
+fviz_nbclust(penguins_scaled, kmeans, method = "silhouette") +
+  labs(title = "Silhouette Method for Optimal Clusters")
+```
+
+
+From the Elbow and Silhouette methods, we can see that the optimal number of clusters is 2.
+
+
+## **Task 5 : K-Means : Model Fitting and Cluster Profiling**
+```{r}
+set.seed(2026)  # For reproducibility
+k_opt <- 2
+# Fit K-Means model with 3 clusters
+kmeans_model <- kmeans(penguins_scaled, centers = k_opt, nstart = 25)
+kmeans_model
+
+```
+
+```{r}
+# Add cluster assignments to original data
+penguins_clean$Cluster <- as.factor(kmeans_model$cluster)
+#Cluster centroids
+kmeans_model$centers
+# Cluster profiling
+cluster_profiles <- penguins_clean %>%
+  group_by(Cluster) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE),n = n())
+cluster_profiles
+
+```
+
+
+
+
+```{r}
+# Table summarizing cluster characteristics(size,centroid values,dominant species)
+cluster_summary <- penguins_clean %>%
+  group_by(Cluster) %>%
+  summarise(Size = n(),
+            Centroid_Bill_Length = mean(bill_length_mm),
+            Centroid_Bill_Depth = mean(bill_depth_mm),
+            Centroid_Flipper_Length = mean(flipper_length_mm),
+            Centroid_Body_Mass = mean(body_mass_g),
+            Dominant_Species = names(sort(table(species), decreasing = TRUE)[1]))
+cluster_summary
+
+
+```
+
+
+
+
+
+```{r}
+# Visualization
+fviz_cluster(kmeans_model, data = penguins_scaled, geom = "point", ellipse.type = "norm", main = "K-Means Clustering of Penguins")
+```
+
+
+## **Task 6 : Principal Component Analysis (PCA)**
+```{r}
+# Perform PCA
+pca_result <- prcomp(penguins_scaled, center = TRUE, scale. = TRUE)
+# Summary of PCA
+summary(pca_result)
+
+```
+
+```{r}
+# Scree plot to visualize explained variance
+fviz_eig(pca_result, addlabels = TRUE, main = "Scree Plot : PCA Explained Variance")
+```
+
+
+```{r}
+# Loadings of the first two principal components
+pca_result$rotation[, 1:2]
+```
+
+
+
+
+```{r}
+# Biplot of the first two principal components
+fviz_pca_biplot(pca_result, label = "var", habillage = "none", addEllipses = FALSE,col.var = "black", repel = TRUE,title = "PCA Biplot of Penguins : PC1 vs PC2")
+
+```
+
+
+## **Task 7 : Combining K -means and PCA**
+```{r}
+set.seed(2026)
+# Project data onto the first two principal components
+pca_scores <- as.data.frame(pca_result$x[, 1:2])
+colnames(pca_scores) <- c("PC1", "PC2")
+
+#K-means on PCA- reduced data
+kmeans_pca <- kmeans(pca_scores, centers = k_opt, nstart = 25)
+# Compare cluster assignments from PCA -reduced data  on original4-dimensional data using confusion matrix
+table(FullSpace = kmeans_model$cluster, PCspace = kmeans_pca$cluster)
+
+```
+
+```{r}
+# Scatterplot of PC1 vs PC2 colored by K-Means clusters(full data)
+pca_scores$Cluster <- as.factor(kmeans_model$cluster)
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PC1 vs PC2 :Colored by K-Means Clusters (Full Data)") +
+  theme_minimal() +
+  scale_color_manual(values = c("red", "green", "blue"))
+```
+
+```{r}
+# Scatterplot of PC1 vs PC2 colored by species
+pca_scores$Species <- penguins_clean$species
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = Species)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PC1 vs PC2 : Colored by Species") +
+  theme_minimal() +
+  scale_color_manual(values = c("orange", "purple", "cyan"))
+```
+
+
+## **Task 8 :Cluster validation and Quality Assessment**
+```{r}
+# Silhouette analysis for K-Means clusters
+silhouette_kmeans <- silhouette(kmeans_model$cluster, dist(penguins_scaled))
+mean_silhouette_kmeans <- mean(silhouette_kmeans[, 3])
+mean_silhouette_kmeans
+plot(silhouette_kmeans, main = "Silhouette Plot for K-Means Clusters", col = c("red", "green", "blue"), border = NA)
+```
+
+```{r}
+# Dunn index for K-Means cluster
+library(clValid)
+dunn_index <- dunn(dist(penguins_scaled), kmeans_model$cluster)
+dunn_index
+```
+
+
+```{r}
+# Calinski-Harabasz Index for K-Means clusters
+library(clusterSim)
+
+ch_index <- index.G1(penguins_scaled, kmeans_model$cluster)
+
+ch_index
+```
+
+
+```{r}
+# Comparing CH values for k= 2, 3, 4
+ch_values <- numeric()
+
+for (k in 2:4) {
+  km <- kmeans(penguins_scaled, centers = k, nstart = 25)
+  ch_values[k] <- index.G1(penguins_scaled, km$cluster)
+}
+
+ch_values
+```
+
+## **Task 9 : Interpretation and Biological Insights**
+```{r}
+#Contigency table of K-Means clusters vs species
+table(penguins_clean$Cluster, penguins_clean$species)
+```
+
+
+```{r}
+# PCA loadings Interpretation
+loadings_df <- as.data.frame(pca_result$rotation[, 1:2])
+loadings_df$Variable <- rownames(loadings_df)
+print(loadings_df)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
